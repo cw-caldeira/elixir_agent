@@ -54,12 +54,34 @@ defmodule NewRelic.Telemetry.Plug do
   @cowboy_stop [:cowboy, :request, :stop]
   @cowboy_exception [:cowboy, :request, :exception]
 
+  @bandit_start [:bandit, :request, :start]
+  @bandit_stop [:bandit, :request, :stop]
+  @bandit_exception [:bandit, :request, :exception]
+
+  @start_events [
+    @cowboy_start,
+    @bandit_start
+  ]
+
+  @stop_events [
+    @cowboy_stop,
+    @bandit_stop
+  ]
+
+  @exception_events [
+    @cowboy_exception,
+    @bandit_exception
+  ]
+
   @plug_router_start [:plug, :router_dispatch, :start]
 
   @plug_events [
     @cowboy_start,
     @cowboy_stop,
     @cowboy_exception,
+    @bandit_start,
+    @bandit_stop,
+    @bandit_exception,
     @plug_router_start
   ]
 
@@ -85,11 +107,12 @@ defmodule NewRelic.Telemetry.Plug do
 
   @doc false
   def handle_event(
-        @cowboy_start,
+        start_event,
         %{system_time: system_time},
         meta,
         _config
-      ) do
+      )
+      when start_event in @start_events do
     Transaction.Reporter.start_transaction(:web)
 
     if NewRelic.Config.enabled?(),
@@ -109,11 +132,12 @@ defmodule NewRelic.Telemetry.Plug do
   end
 
   def handle_event(
-        @cowboy_stop,
+        stop_event,
         %{duration: duration} = meas,
         meta,
         _config
-      ) do
+      )
+      when stop_event in @stop_events do
     add_stop_attrs(meas, meta, duration)
     add_stop_error_attrs(meta)
 
@@ -122,22 +146,24 @@ defmodule NewRelic.Telemetry.Plug do
 
   # Don't treat 404 as an exception
   def handle_event(
-        @cowboy_exception,
+        exception_event,
         %{duration: duration} = meas,
         %{resp_status: "404" <> _} = meta,
         _config
-      ) do
+      )
+      when exception_event in @exception_events do
     add_stop_attrs(meas, meta, duration)
 
     Transaction.Reporter.stop_transaction(:web)
   end
 
   def handle_event(
-        @cowboy_exception,
+        exception_event,
         %{duration: duration} = meas,
         %{kind: kind} = meta,
         _config
-      ) do
+      )
+      when exception_event in @exception_events do
     add_stop_attrs(meas, meta, duration)
     {reason, stack} = reason_and_stack(meta)
 
